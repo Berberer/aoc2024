@@ -52,6 +52,10 @@ struct FarmPlotRegion {
     perimeter: u32,
     area: u32,
     plot_coordinates: HashSet<(usize, usize)>,
+    frontier_north: HashSet<(usize, usize)>,
+    frontier_south: HashSet<(usize, usize)>,
+    frontier_west: HashSet<(usize, usize)>,
+    frontier_east: HashSet<(usize, usize)>,
 }
 
 fn parse_input(input: &str) -> Farm {
@@ -60,12 +64,23 @@ fn parse_input(input: &str) -> Farm {
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn flood_to_region_border<'a>(
     plot_type: char,
     (x, y): (usize, usize),
     farm: &Farm,
     region_coordinates: &'a mut HashSet<(usize, usize)>,
-) -> &'a mut HashSet<(usize, usize)> {
+    region_frontier_north: &'a mut HashSet<(usize, usize)>,
+    region_frontier_south: &'a mut HashSet<(usize, usize)>,
+    region_frontier_west: &'a mut HashSet<(usize, usize)>,
+    region_frontier_east: &'a mut HashSet<(usize, usize)>,
+) -> (
+    &'a mut HashSet<(usize, usize)>,
+    &'a mut HashSet<(usize, usize)>,
+    &'a mut HashSet<(usize, usize)>,
+    &'a mut HashSet<(usize, usize)>,
+    &'a mut HashSet<(usize, usize)>,
+) {
     let farm_plot_info = farm.get_plot_info(x, y);
 
     if farm_plot_info.plot_type == plot_type && !region_coordinates.contains(&(x, y)) {
@@ -76,34 +91,81 @@ fn flood_to_region_border<'a>(
             .map(|c| c == plot_type)
             .unwrap_or(false)
         {
-            flood_to_region_border(plot_type, (x, y - 1), farm, region_coordinates);
+            flood_to_region_border(
+                plot_type,
+                (x, y - 1),
+                farm,
+                region_coordinates,
+                region_frontier_north,
+                region_frontier_south,
+                region_frontier_west,
+                region_frontier_east,
+            );
+        } else {
+            region_frontier_north.insert((x, y));
         }
         if farm_plot_info
             .neighbor_south
             .map(|c| c == plot_type)
             .unwrap_or(false)
         {
-            flood_to_region_border(plot_type, (x, y + 1), farm, region_coordinates);
+            flood_to_region_border(
+                plot_type,
+                (x, y + 1),
+                farm,
+                region_coordinates,
+                region_frontier_north,
+                region_frontier_south,
+                region_frontier_west,
+                region_frontier_east,
+            );
+        } else {
+            region_frontier_south.insert((x, y));
         }
         if farm_plot_info
             .neighbor_west
             .map(|c| c == plot_type)
             .unwrap_or(false)
         {
-            flood_to_region_border(plot_type, (x - 1, y), farm, region_coordinates);
+            flood_to_region_border(
+                plot_type,
+                (x - 1, y),
+                farm,
+                region_coordinates,
+                region_frontier_north,
+                region_frontier_south,
+                region_frontier_west,
+                region_frontier_east,
+            );
+        } else {
+            region_frontier_west.insert((x, y));
         }
         if farm_plot_info
             .neighbor_east
             .map(|c| c == plot_type)
             .unwrap_or(false)
         {
-            flood_to_region_border(plot_type, (x + 1, y), farm, region_coordinates);
+            flood_to_region_border(
+                plot_type,
+                (x + 1, y),
+                farm,
+                region_coordinates,
+                region_frontier_north,
+                region_frontier_south,
+                region_frontier_west,
+                region_frontier_east,
+            );
+        } else {
+            region_frontier_east.insert((x, y));
         }
-
-        region_coordinates
-    } else {
-        region_coordinates
     }
+    (
+        region_coordinates,
+        region_frontier_north,
+        region_frontier_south,
+        region_frontier_west,
+        region_frontier_east,
+    )
 }
 
 fn calculate_fencing_perimeter(plot_info: &FarmPlotInfo) -> u32 {
@@ -124,6 +186,10 @@ fn calculate_fencing_perimeter(plot_info: &FarmPlotInfo) -> u32 {
 fn create_farm_plot_region_from_coordinates(
     plot_type: char,
     coordinates: HashSet<(usize, usize)>,
+    frontier_north: HashSet<(usize, usize)>,
+    frontier_south: HashSet<(usize, usize)>,
+    frontier_west: HashSet<(usize, usize)>,
+    frontier_east: HashSet<(usize, usize)>,
     farm: &Farm,
 ) -> FarmPlotRegion {
     let perimeter = coordinates
@@ -134,6 +200,10 @@ fn create_farm_plot_region_from_coordinates(
     FarmPlotRegion {
         plot_type,
         perimeter,
+        frontier_north,
+        frontier_south,
+        frontier_west,
+        frontier_east,
         area: coordinates.len() as u32,
         plot_coordinates: coordinates,
     }
@@ -148,12 +218,29 @@ fn find_farm_plot_regions(farm: &Farm) -> Vec<FarmPlotRegion> {
             if !covered_coordinates.contains(&(x, y)) {
                 let plot_type = farm.plots[y][x];
                 let mut region_coordinates = HashSet::new();
-                flood_to_region_border(plot_type, (x, y), farm, &mut region_coordinates);
+                let mut region_frontier_north = HashSet::new();
+                let mut region_frontier_south = HashSet::new();
+                let mut region_frontier_west = HashSet::new();
+                let mut region_frontier_east = HashSet::new();
+                flood_to_region_border(
+                    plot_type,
+                    (x, y),
+                    farm,
+                    &mut region_coordinates,
+                    &mut region_frontier_north,
+                    &mut region_frontier_south,
+                    &mut region_frontier_west,
+                    &mut region_frontier_east,
+                );
 
                 covered_coordinates.extend(region_coordinates.clone());
                 regions.push(create_farm_plot_region_from_coordinates(
                     plot_type,
                     region_coordinates,
+                    region_frontier_north,
+                    region_frontier_south,
+                    region_frontier_west,
+                    region_frontier_east,
                     farm,
                 ));
             }
@@ -161,6 +248,54 @@ fn find_farm_plot_regions(farm: &Farm) -> Vec<FarmPlotRegion> {
     }
 
     regions
+}
+
+fn flood_unique_frontier_side<'a>(
+    (x, y): (usize, usize),
+    all_frontier_coordinates: &HashSet<(usize, usize)>,
+    side_coordinates: &'a mut HashSet<(usize, usize)>,
+) -> &'a mut HashSet<(usize, usize)> {
+    if all_frontier_coordinates.contains(&(x, y)) && !side_coordinates.contains(&(x, y)) {
+        side_coordinates.insert((x, y));
+
+        if y > 0 {
+            flood_unique_frontier_side((x, y - 1), all_frontier_coordinates, side_coordinates);
+        }
+        flood_unique_frontier_side((x, y + 1), all_frontier_coordinates, side_coordinates);
+        if x > 0 {
+            flood_unique_frontier_side((x - 1, y), all_frontier_coordinates, side_coordinates);
+        }
+        flood_unique_frontier_side((x + 1, y), all_frontier_coordinates, side_coordinates);
+    }
+
+    side_coordinates
+}
+
+fn count_unique_sides_of_frontier(all_frontier_coordinates: &HashSet<(usize, usize)>) -> u32 {
+    let mut sides_count = 0;
+
+    let mut covered_coordinates = HashSet::new();
+    for coordinates in all_frontier_coordinates {
+        if !covered_coordinates.contains(coordinates) {
+            let mut side_coordinates = HashSet::new();
+            flood_unique_frontier_side(
+                *coordinates,
+                all_frontier_coordinates,
+                &mut side_coordinates,
+            );
+            covered_coordinates.extend(side_coordinates);
+            sides_count += 1;
+        }
+    }
+
+    sides_count
+}
+
+fn calculate_number_of_sides(farm_plot_region: &FarmPlotRegion) -> u32 {
+    count_unique_sides_of_frontier(&farm_plot_region.frontier_north)
+        + count_unique_sides_of_frontier(&farm_plot_region.frontier_south)
+        + count_unique_sides_of_frontier(&farm_plot_region.frontier_west)
+        + count_unique_sides_of_frontier(&farm_plot_region.frontier_east)
 }
 
 fn main() {
@@ -174,6 +309,13 @@ fn main() {
         .map(|r| r.area * r.perimeter)
         .sum::<u32>();
     println!("Fencing all regions of the farm will cost {fence_cost}");
+
+    // Solution for puzzle 2
+    let fence_cost_with_bulk_discount = farm_plot_regions
+        .iter()
+        .map(|r| r.area * calculate_number_of_sides(r))
+        .sum::<u32>();
+    println!("Fencing all regions of the farm with bulk discount will cost {fence_cost_with_bulk_discount}");
 }
 
 #[cfg(test)]
@@ -231,11 +373,29 @@ mod tests {
             ],
         };
         let mut coordinates = HashSet::new();
-        flood_to_region_border('b', (1, 0), &farm, &mut coordinates);
+        let mut frontier_north = HashSet::new();
+        let mut frontier_south = HashSet::new();
+        let mut frontier_west = HashSet::new();
+        let mut frontier_east = HashSet::new();
+        flood_to_region_border(
+            'b',
+            (1, 0),
+            &farm,
+            &mut coordinates,
+            &mut frontier_north,
+            &mut frontier_south,
+            &mut frontier_west,
+            &mut frontier_east,
+        );
+
         assert_eq!(
             coordinates,
             HashSet::from([(1, 0), (2, 0), (0, 1), (1, 1), (2, 1), (1, 2),])
         );
+        assert_eq!(frontier_north, HashSet::from([(0, 1), (1, 0), (2, 0)]));
+        assert_eq!(frontier_south, HashSet::from([(0, 1), (1, 2), (2, 1)]));
+        assert_eq!(frontier_west, HashSet::from([(0, 1), (1, 0), (1, 2)]));
+        assert_eq!(frontier_east, HashSet::from([(2, 0), (2, 1), (1, 2)]));
     }
 
     #[test]
@@ -275,7 +435,11 @@ mod tests {
                     plot_type: 'a',
                     perimeter: 4,
                     area: 1,
-                    plot_coordinates: HashSet::from([(0, 0)])
+                    plot_coordinates: HashSet::from([(0, 0)]),
+                    frontier_north: HashSet::from([(0, 0)]),
+                    frontier_south: HashSet::from([(0, 0)]),
+                    frontier_west: HashSet::from([(0, 0)]),
+                    frontier_east: HashSet::from([(0, 0)])
                 },
                 FarmPlotRegion {
                     plot_type: 'b',
@@ -288,21 +452,48 @@ mod tests {
                         (1, 1),
                         (2, 1),
                         (1, 2),
-                    ])
+                    ]),
+                    frontier_north: HashSet::from([(0, 1), (1, 0), (2, 0)]),
+                    frontier_south: HashSet::from([(0, 1), (1, 2), (2, 1)]),
+                    frontier_west: HashSet::from([(0, 1), (1, 0), (1, 2)]),
+                    frontier_east: HashSet::from([(2, 0), (2, 1), (1, 2)])
                 },
                 FarmPlotRegion {
                     plot_type: 'a',
                     perimeter: 4,
                     area: 1,
-                    plot_coordinates: HashSet::from([(0, 2)])
+                    plot_coordinates: HashSet::from([(0, 2)]),
+                    frontier_north: HashSet::from([(0, 2)]),
+                    frontier_south: HashSet::from([(0, 2)]),
+                    frontier_west: HashSet::from([(0, 2)]),
+                    frontier_east: HashSet::from([(0, 2)])
                 },
                 FarmPlotRegion {
                     plot_type: 'c',
                     perimeter: 4,
                     area: 1,
-                    plot_coordinates: HashSet::from([(2, 2)])
+                    plot_coordinates: HashSet::from([(2, 2)]),
+                    frontier_north: HashSet::from([(2, 2)]),
+                    frontier_south: HashSet::from([(2, 2)]),
+                    frontier_west: HashSet::from([(2, 2)]),
+                    frontier_east: HashSet::from([(2, 2)])
                 },
             ]
         );
+    }
+
+    #[test]
+    fn find_count_unique_sides_of_frontier() {
+        let frontier_coordinates = HashSet::from([
+            (0, 1),
+            (1, 1),
+            (2, 0),
+            (3, 1),
+            (4, 1),
+            (5, 1),
+            (6, 1),
+            (6, 3),
+        ]);
+        assert_eq!(count_unique_sides_of_frontier(&frontier_coordinates), 4);
     }
 }
